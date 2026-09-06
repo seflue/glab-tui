@@ -1595,6 +1595,23 @@ impl Backend for GlabBackend {
         Ok(crate::domain::pipelines::process_pipeline_jobs(all_jobs))
     }
 
+    async fn list_pipeline_bridges(
+        &self,
+        project: &str,
+        pipeline_id: u64,
+        page_size: usize,
+    ) -> Result<Vec<crate::domain::pipelines::Bridge>> {
+        let encoded = Self::encode_path(project);
+        let endpoint = format!(
+            "/projects/{}/pipelines/{}/bridges?per_page={}",
+            encoded, pipeline_id, page_size
+        );
+        let raw = self
+            .raw_api(&endpoint, "GET", None, "Fetching Bridges")
+            .await?;
+        Ok(serde_json::from_str(&raw)?)
+    }
+
     async fn get_job_trace(&self, project: &str, job_id: u64) -> Result<String> {
         let encoded = Self::encode_path(project);
         let endpoint = format!("/projects/{}/jobs/{}/trace", encoded, job_id);
