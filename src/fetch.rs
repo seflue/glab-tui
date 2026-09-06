@@ -261,6 +261,31 @@ pub fn dispatch_pending_related_mrs_fetch(
     true
 }
 
+/// Re-fetch the child level currently on screen, so refresh inside a descent
+/// updates what the user is looking at and not only the top-level list. A
+/// failed fetch leaves the level as it was: stale data is honest here, where an
+/// emptied list would not be.
+pub fn spawn_refresh_child_level(
+    client: &domain::client::GitlabClient,
+    project_context: &str,
+    parent_id: u64,
+    tx: tokio::sync::mpsc::UnboundedSender<Event>,
+) {
+    let mut client = client.clone();
+    client.tx = None; // suppress terminal log for background fetches
+    let project_context = project_context.to_string();
+    tokio::spawn(async move {
+        if let Ok(bridges) =
+            domain::pipelines::list_pipeline_bridges(&client, &project_context, parent_id).await
+        {
+            let _ = tx.send(Event::ChildLevelFetched(
+                parent_id,
+                domain::pipelines::bridges_to_level(bridges),
+            ));
+        }
+    });
+}
+
 pub fn spawn_refresh_active_tab(
     client: &domain::client::GitlabClient,
     scope: &crate::scope::Scope,
