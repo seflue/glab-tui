@@ -619,6 +619,51 @@ pub use fetch::spawn_fetch_repo_attributes;
 pub use fetch::spawn_refresh_active_tab;
 use handlers::overlays::*;
 
+/// After a key dispatch changed `app.scope`, rebuild the GitLab/GitHub
+/// client for the new scope, reload its cache into `app`, and kick off a
+/// background refresh. No-op if the scope didn't change. Shared by the live
+/// keypress dispatch and the sequence-timeout redispatch so both apply the
+/// same post-processing when a standalone action switches scope.
+async fn sync_after_scope_change(app: &mut App, old_scope: &scope::Scope, events: &EventHandler) {
+    if app.scope == *old_scope {
+        return;
+    }
+
+    if let Ok(mut client) = domain::client::GitlabClient::new(&app.config).await {
+        client.page_size = app.config.page_size;
+        client.api_per_page = app.config.api_per_page_clamped();
+        client.tx = Some(events.sender());
+        client.backend.set_tx(events.sender());
+        app.gitlab_client = Some(client.clone());
+    } else {
+        app.gitlab_client = None;
+    }
+
+    let cache = crate::utils::cache::load_cache(app.scope.as_str());
+    app.project_cache = cache.clone();
+    app.issues.items = cache.issues;
+    app.mrs.items = cache.mrs;
+    crate::fetch::derive_workflow(&mut app.mrs.items);
+    app.pipelines.items = cache.pipelines;
+    app.runners.items = cache.runners;
+    app.releases.items = cache.releases;
+    app.todos.items = cache.todos;
+    app.milestones.items = cache.milestones;
+    app.pipeline_jobs = cache.pipeline_jobs;
+    app.branches.items = cache.branches;
+    app.environments.items = cache.environments;
+    app.milestone_issues_cache = cache.milestone_issues;
+    app.cached_labels = cache.labels;
+    app.cached_members = cache.members;
+
+    if let Some(client) = app.gitlab_client.clone() {
+        let tx = events.sender();
+        app.start_loading_tab(app.active_tab);
+        spawn_refresh_active_tab(&client, &app.scope, app.active_tab, tx.clone());
+        spawn_fetch_repo_attributes(&client.muted(), &app.scope, tx);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     use clap::Parser;
@@ -983,23 +1028,24 @@ async fn main() -> Result<()> {
             match event {
                 Event::Tick => {
                     app.tick();
-                    if app.pending_key.as_ref().is_some_and(|pending_key| {
-                        pending_key.since.elapsed()
-                            >= std::time::Duration::from_millis(app.config.keybinding_timeout_ms)
-                    }) {
-                        let pending_key = app.pending_key.take().unwrap();
-                        if let KeyCode::Char(c) = pending_key.event.code {
-                            if app.standalone_chars.contains(&c) {
-                                handlers::tabs::handle_active_tab_key(
-                                    &mut app,
-                                    &pending_key.event,
-                                    &mut terminal,
-                                    events.sender(),
-                                    None,
-                                )
-                                .await;
-                            }
-                        }
+                    let timeout =
+                        std::time::Duration::from_millis(app.config.keybinding_timeout_ms);
+                    if let Some(pending_key) = app
+                        .pending_key
+                        .take_if(|pending_key| pending_key.since.elapsed() >= timeout)
+                        && let KeyCode::Char(c) = pending_key.event.code
+                        && app.standalone_chars.contains(&c)
+                    {
+                        let old_scope = app.scope.clone();
+                        handlers::tabs::handle_active_tab_key(
+                            &mut app,
+                            &pending_key.event,
+                            &mut terminal,
+                            events.sender(),
+                            None,
+                        )
+                        .await;
+                        sync_after_scope_change(&mut app, &old_scope, &events).await;
                     }
                     if app.active_tab == app::Tab::Jobs
                         && app.job_trace_follow
@@ -8039,47 +8085,7 @@ async fn main() -> Result<()> {
                     )
                     .await;
 
-                    if app.scope != old_scope {
-                        if let Ok(mut client) = domain::client::GitlabClient::new(&app.config).await
-                        {
-                            client.page_size = app.config.page_size;
-                            client.api_per_page = app.config.api_per_page_clamped();
-                            client.tx = Some(events.sender());
-                            client.backend.set_tx(events.sender());
-                            app.gitlab_client = Some(client.clone());
-                        } else {
-                            app.gitlab_client = None;
-                        }
-
-                        let cache = crate::utils::cache::load_cache(app.scope.as_str());
-                        app.project_cache = cache.clone();
-                        app.issues.items = cache.issues;
-                        app.mrs.items = cache.mrs;
-                        crate::fetch::derive_workflow(&mut app.mrs.items);
-                        app.pipelines.items = cache.pipelines;
-                        app.runners.items = cache.runners;
-                        app.releases.items = cache.releases;
-                        app.todos.items = cache.todos;
-                        app.milestones.items = cache.milestones;
-                        app.pipeline_jobs = cache.pipeline_jobs;
-                        app.branches.items = cache.branches;
-                        app.environments.items = cache.environments;
-                        app.milestone_issues_cache = cache.milestone_issues;
-                        app.cached_labels = cache.labels;
-                        app.cached_members = cache.members;
-
-                        if let Some(client) = app.gitlab_client.clone() {
-                            let tx = events.sender();
-                            app.start_loading_tab(app.active_tab);
-                            spawn_refresh_active_tab(
-                                &client,
-                                &app.scope,
-                                app.active_tab,
-                                tx.clone(),
-                            );
-                            spawn_fetch_repo_attributes(&client.muted(), &app.scope, tx);
-                        }
-                    }
+                    sync_after_scope_change(&mut app, &old_scope, &events).await;
                 }
                 _ => {}
             }
