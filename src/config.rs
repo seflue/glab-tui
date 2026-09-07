@@ -685,6 +685,8 @@ pub struct KeybindingGlobal {
     pub jump_to_id: String,
     #[serde(default = "def_submit_edit")]
     pub submit_edit: String,
+    #[serde(default = "def_scroll_top")]
+    pub scroll_top: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -969,6 +971,7 @@ keybind_defaults! {
     def_switch_repo = "Ctrl+s",
     def_jump_to_id = "g",
     def_submit_edit = "Ctrl+x",
+    def_scroll_top = "Home",
 }
 
 impl Default for KeybindingGlobal {
@@ -987,6 +990,7 @@ impl Default for KeybindingGlobal {
             switch_repo: def_switch_repo(),
             jump_to_id: def_jump_to_id(),
             submit_edit: def_submit_edit(),
+            scroll_top: def_scroll_top(),
         }
     }
 }
@@ -1183,6 +1187,10 @@ fn def_api_per_page() -> usize {
     100
 }
 
+fn def_keybinding_timeout_ms() -> u64 {
+    1000
+}
+
 fn def_fetch_label_colors() -> bool {
     true
 }
@@ -1221,6 +1229,11 @@ pub struct Config {
     /// the theme palette as fallback.
     #[serde(default = "def_fetch_label_colors")]
     pub fetch_label_colors: bool,
+    /// How long a pending sequence prefix (e.g. the first `g` of `gg`) waits
+    /// for its second keypress before it is dropped, in milliseconds.
+    /// Resolution is bounded by the event loop's 250ms tick.
+    #[serde(default = "def_keybinding_timeout_ms")]
+    pub keybinding_timeout_ms: u64,
     pub disabled_tabs: Option<Vec<String>>,
     pub ui: UiConfig,
     pub issues: PaneConfig,
@@ -1247,6 +1260,7 @@ impl Default for Config {
             page_size: def_page_size(),
             api_per_page: def_api_per_page(),
             fetch_label_colors: def_fetch_label_colors(),
+            keybinding_timeout_ms: def_keybinding_timeout_ms(),
             disabled_tabs: None,
             ui: UiConfig::default(),
             issues: PaneConfig::default(),
@@ -1299,6 +1313,11 @@ page_size = 100
 # truncates large JSON response bodies. Only affects GitLab backends.
 # api_per_page = 100
 
+# How long a pending key-sequence prefix (e.g. the first "g" of "gg") waits
+# for its second keypress before it is dropped, in milliseconds. Rounded up
+# to the nearest 250ms tick.
+# keybinding_timeout_ms = 1000
+
 # Per-color overrides (takes precedence over theme_preset).
 # Uncomment the [theme] line and any colors you want to override.
 # [theme]
@@ -1334,6 +1353,7 @@ scroll_down = "J"
 scroll_up = "K"
 save_view = "s"
 jump_to_id = "g"
+scroll_top = "Home"
 
 [keybindings.issues]
 create_issue = "n"
@@ -1878,6 +1898,22 @@ page_size = 250
         }
         assert_eq!(cfg.page_size, 250);
         assert_eq!(cfg.api_per_page, 20);
+    }
+
+    #[test]
+    fn scroll_top_defaults_to_home() {
+        assert_eq!(Config::default().keybindings.global.scroll_top, "Home");
+    }
+
+    #[test]
+    fn keybinding_timeout_ms_defaults_to_1000_and_is_configurable() {
+        assert_eq!(Config::default().keybinding_timeout_ms, 1000);
+
+        let custom: Config = toml::from_str("keybinding_timeout_ms = 500").expect("parse config");
+        assert_eq!(custom.keybinding_timeout_ms, 500);
+
+        let empty: Config = toml::from_str("").expect("parse empty config");
+        assert_eq!(empty.keybinding_timeout_ms, 1000);
     }
 
     #[test]
