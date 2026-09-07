@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::backend::BackendKind;
-use crate::config::{Config, THEME, Theme};
+use crate::config::{Config, KeybindingConfig, THEME, Theme};
 use crate::domain::workflow_inputs::WorkflowInput;
 use crate::utils::format::expand_tabs;
 use crate::utils::ui::StatefulTable;
@@ -2937,8 +2937,58 @@ impl SubmitDialog {
     }
 }
 
+/// A captured first keypress of a not-yet-completed key sequence (e.g. the
+/// `g` of `gg`), waiting for its second keystroke or a timeout.
+pub struct PendingKey {
+    pub event: crossterm::event::KeyEvent,
+    pub since: std::time::Instant,
+}
+
+/// Splits every string leaf of `keybindings` into sequence-prefix
+/// characters (the first character of a two-character binding, e.g. `gg`)
+/// and standalone characters (a one-character binding). Non-string values
+/// and bindings of any other length are skipped.
+fn keybinding_char_sets(keybindings: &KeybindingConfig) -> (HashSet<char>, HashSet<char>) {
+    fn walk(value: &toml::Value, prefixes: &mut HashSet<char>, standalone: &mut HashSet<char>) {
+        match value {
+            toml::Value::Table(table) => {
+                for v in table.values() {
+                    walk(v, prefixes, standalone);
+                }
+            }
+            toml::Value::String(s) => {
+                let mut chars = s.chars();
+                match (chars.next(), chars.next(), chars.next()) {
+                    (Some(c), None, None) => {
+                        standalone.insert(c);
+                    }
+                    (Some(first), Some(_), None) => {
+                        prefixes.insert(first);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut prefixes = HashSet::new();
+    let mut standalone = HashSet::new();
+    if let Ok(value) = toml::Value::try_from(keybindings) {
+        walk(&value, &mut prefixes, &mut standalone);
+    }
+    (prefixes, standalone)
+}
+
 pub struct App {
     pub config: Config,
+    /// The first keypress of an in-progress key sequence (e.g. `g` of
+    /// `gg`), if one hasn't resolved or timed out yet.
+    pub pending_key: Option<PendingKey>,
+    /// First characters of configured two-character sequence bindings.
+    pub sequence_prefixes: HashSet<char>,
+    /// Characters of configured one-character bindings.
+    pub standalone_chars: HashSet<char>,
     pub active_tab: Tab,
     pub running: bool,
     pub scope: crate::scope::Scope,
@@ -3077,8 +3127,12 @@ pub struct App {
 impl Default for App {
     fn default() -> Self {
         let config = Config::load();
+        let (sequence_prefixes, standalone_chars) = keybinding_char_sets(&config.keybindings);
         Self {
             config: config.clone(),
+            pending_key: None,
+            sequence_prefixes,
+            standalone_chars,
             active_tab: Tab::default(),
             running: true,
             scope: crate::scope::Scope::default(),
@@ -6131,6 +6185,18 @@ mod tests {
         assert_eq!(parse_jump_input("issue"), None);
         assert_eq!(parse_jump_input("123abc"), None);
         assert_eq!(parse_jump_input("#123abc"), None);
+    }
+
+    #[test]
+    fn keybinding_char_sets_splits_two_char_and_single_char_bindings() {
+        let mut keybindings = crate::config::KeybindingConfig::default();
+        keybindings.global.next_tab = "gg".to_string();
+
+        let (prefixes, standalone) = keybinding_char_sets(&keybindings);
+
+        assert_eq!(prefixes, HashSet::from(['g']));
+        assert!(standalone.contains(&'q'));
+        assert!(!standalone.contains(&'g'));
     }
 
     #[test]

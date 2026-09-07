@@ -88,6 +88,25 @@ pub fn keybinding_matches(binding: &str, event: &crossterm::event::KeyEvent) -> 
     }
 }
 
+/// Like `keybinding_matches`, but also resolves two-character sequence
+/// bindings (e.g. `"gg"`) against a pending first keypress. `pending` is the
+/// character captured on the previous keystroke, if any.
+pub fn matches_with_pending(
+    binding: &str,
+    pending: Option<char>,
+    event: &crossterm::event::KeyEvent,
+) -> bool {
+    if binding.len() == 2 && !binding.contains('+') {
+        let mut chars = binding.chars();
+        if let (Some(first), Some(second)) = (chars.next(), chars.next()) {
+            return pending == Some(first)
+                && event.code == KeyCode::Char(second)
+                && event.modifiers.is_empty();
+        }
+    }
+    keybinding_matches(binding, event)
+}
+
 #[cfg(test)]
 mod tests {
     use super::keybinding_matches;
@@ -157,5 +176,36 @@ mod tests {
 
         let event_unmodified = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
         assert!(!keybinding_matches("Ctrl+Enter", &event_unmodified));
+    }
+
+    #[test]
+    fn two_char_binding_matches_second_key_when_pending_holds_first() {
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        assert!(super::matches_with_pending("gg", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_does_not_match_wrong_second_key() {
+        let event = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        assert!(!super::matches_with_pending("gg", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_does_not_match_without_pending() {
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        assert!(!super::matches_with_pending("gg", None, &event));
+    }
+
+    #[test]
+    fn single_char_binding_behaves_like_keybinding_matches_under_matches_with_pending() {
+        let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(
+            super::matches_with_pending("q", None, &event),
+            keybinding_matches("q", &event)
+        );
+        assert_eq!(
+            super::matches_with_pending("q", Some('g'), &event),
+            keybinding_matches("q", &event)
+        );
     }
 }

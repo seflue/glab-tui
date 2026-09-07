@@ -1003,6 +1003,24 @@ async fn main() -> Result<()> {
                         app.pending_related_mrs_iid = None;
                         app.pending_related_mrs_since = None;
                     }
+                    if app.pending_key.as_ref().is_some_and(|pending_key| {
+                        pending_key.since.elapsed()
+                            >= std::time::Duration::from_millis(app.config.keybinding_timeout_ms)
+                    }) {
+                        let pending_key = app.pending_key.take().unwrap();
+                        if let KeyCode::Char(c) = pending_key.event.code {
+                            if app.standalone_chars.contains(&c) {
+                                handlers::tabs::handle_active_tab_key(
+                                    &mut app,
+                                    &pending_key.event,
+                                    &mut terminal,
+                                    events.sender(),
+                                    None,
+                                )
+                                .await;
+                            }
+                        }
+                    }
                     if app.active_tab == app::Tab::Jobs
                         && app.job_trace_follow
                         && app.job_trace.is_some()
@@ -8090,12 +8108,32 @@ async fn main() -> Result<()> {
                         }
                     }
 
+                    let pending: Option<char> = if let Some(pending_key) = app.pending_key.take() {
+                        match pending_key.event.code {
+                            KeyCode::Char(c) => Some(c),
+                            _ => None,
+                        }
+                    } else if let KeyCode::Char(c) = key_event.code {
+                        if key_event.modifiers.is_empty() && app.sequence_prefixes.contains(&c) {
+                            app.pending_key = Some(app::PendingKey {
+                                event: key_event,
+                                since: std::time::Instant::now(),
+                            });
+                            continue;
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
                     let old_scope = app.scope.clone();
                     handlers::tabs::handle_active_tab_key(
                         &mut app,
                         &key_event,
                         &mut terminal,
                         events.sender(),
+                        pending,
                     )
                     .await;
 

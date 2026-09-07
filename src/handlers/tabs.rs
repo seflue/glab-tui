@@ -4,7 +4,7 @@ use crate::entity_editor::rebuild_edit_menu;
 use crate::event::Event;
 use crate::fetch::spawn_refresh_active_tab;
 use crate::git_helpers::{get_default_branch, slugify};
-use crate::keybinding::keybinding_matches;
+use crate::keybinding::{keybinding_matches, matches_with_pending};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::ListState;
 use tokio::sync::mpsc::UnboundedSender;
@@ -73,6 +73,7 @@ pub async fn handle_active_tab_key(
     key_event: &KeyEvent,
     terminal: &mut AppTerminal,
     tx: UnboundedSender<Event>,
+    pending: Option<char>,
 ) {
     let mut handled = true;
     match app.active_tab {
@@ -2103,6 +2104,14 @@ pub async fn handle_active_tab_key(
                 || key_event.code == KeyCode::Char('K'))
         {
             app.detail_scroll = app.detail_scroll.saturating_sub(1);
+        } else if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_top,
+                pending,
+                &key_event,
+            )
+        {
+            app.detail_scroll = 0;
         }
 
         match key_event.code {
