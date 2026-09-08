@@ -1233,6 +1233,24 @@ pub(crate) fn render_help(f: &mut Frame, app: &mut App, size: Rect) {
         },
         Shortcut {
             category: "Global & Nav",
+            key: d(format!(
+                "{} / {}",
+                app.config.keybindings.global.scroll_page_down,
+                app.config.keybindings.global.scroll_page_up
+            )),
+            action: "Scroll description / trace / notes by a page",
+        },
+        Shortcut {
+            category: "Global & Nav",
+            key: d(format!(
+                "{} / {}",
+                app.config.keybindings.global.scroll_half_page_down,
+                app.config.keybindings.global.scroll_half_page_up
+            )),
+            action: "Scroll description / trace / notes by half a page",
+        },
+        Shortcut {
+            category: "Global & Nav",
             key: d(format!("{} / f", app.config.keybindings.global.search)),
             action: "Open fuzzy search / filter bar",
         },
@@ -2013,7 +2031,11 @@ pub(crate) fn render_help(f: &mut Frame, app: &mut App, size: Rect) {
 
     let filtered_shortcuts: Vec<&Shortcut> = shortcuts
         .iter()
-        .filter(|s| active_categories.contains(&s.category) && !s.key.trim().is_empty())
+        .filter(|s| active_categories.contains(&s.category))
+        // An action with no binding renders as an empty key column, or as a
+        // bare "/" where two bindings are listed side by side. Drop the row
+        // instead: the config is what documents an unbound action.
+        .filter(|s| s.key.split('/').any(|k| !k.trim().is_empty()))
         .collect();
 
     let block = Block::default()
