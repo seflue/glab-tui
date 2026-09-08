@@ -126,6 +126,14 @@ pub async fn handle_active_tab_key(
             )
         {
             app.detail_scroll = 0;
+        } else if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_bottom,
+                pending,
+                key_event,
+            )
+        {
+            app.detail_scroll_to_bottom = true;
         } else {
             apply_page_scroll(app, pending, key_event);
         }
@@ -1574,7 +1582,7 @@ pub async fn handle_active_tab_key(
                         {
                             app.job_trace_follow = !app.job_trace_follow;
                             if app.job_trace_follow {
-                                app.job_trace_needs_scroll_to_bottom = true;
+                                app.detail_scroll_to_bottom = true;
                             }
                         }
                         _ => handled = false,
@@ -2190,6 +2198,17 @@ pub async fn handle_active_tab_key(
             )
         {
             app.detail_scroll = 0;
+        } else if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_bottom,
+                pending,
+                &key_event,
+            )
+        {
+            // Only the flag - the last line's index is the render pass's
+            // `max`, which no handler knows. `settle_detail_scroll` resolves
+            // it in the same frame.
+            app.detail_scroll_to_bottom = true;
         } else {
             apply_page_scroll(app, None, key_event);
         }
@@ -3073,6 +3092,74 @@ mod tests {
         assert_eq!(app.error_message, None);
     }
 
+    /// The handler must not write `detail_scroll` itself: the last line's
+    /// index is the render pass's `max`, which no handler knows. It raises
+    /// the flag and `settle_detail_scroll` resolves it in the same frame.
+    #[tokio::test]
+    async fn scroll_bottom_raises_the_jump_flag_without_touching_the_scroll() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.detail_scroll = 5;
+        // `App::default()` goes through `Config::load()`, so the binding comes
+        // from the developer's own config unless it is set here. That the
+        // default is `End` is covered by `scroll_bottom_defaults_to_end`.
+        app.config.keybindings.global.scroll_bottom = "End".to_string();
+
+        dispatch(&mut app, &KeyEvent::new(KeyCode::End, KeyModifiers::NONE)).await;
+
+        assert!(app.detail_scroll_to_bottom);
+        assert_eq!(app.detail_scroll, 5);
+    }
+
+    #[tokio::test]
+    async fn scroll_bottom_is_ignored_while_the_detail_pane_is_hidden() {
+        let mut app = App::default();
+        app.detail_visible = false;
+
+        dispatch(&mut app, &KeyEvent::new(KeyCode::End, KeyModifiers::NONE)).await;
+
+        assert!(!app.detail_scroll_to_bottom);
+    }
+
+    /// `gg` jumps to a known index, so it writes the scroll directly. It must
+    /// not raise the jump flag on the way.
+    #[tokio::test]
+    async fn scroll_top_still_zeroes_the_scroll_without_raising_the_flag() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.detail_scroll = 5;
+
+        dispatch_with_pending(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE),
+            Some('g'),
+        )
+        .await;
+
+        assert_eq!(app.detail_scroll, 0);
+        assert!(!app.detail_scroll_to_bottom);
+    }
+
+    /// The pager binding the feature exists for: with `scroll_bottom` mapped
+    /// to `G` and `drill_into_scope` moved aside, `G` reaches the global
+    /// fallback on the Issues tab in a repository scope.
+    #[tokio::test]
+    async fn scroll_bottom_remapped_to_g_works_on_the_issues_tab() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.scope = crate::scope::Scope::Repository("group/project".to_string());
+        app.config.keybindings.global.scroll_bottom = "G".to_string();
+        app.config.keybindings.issues.drill_into_scope = "P".to_string();
+
+        dispatch(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+        )
+        .await;
+
+        assert!(app.detail_scroll_to_bottom);
+    }
+
     /// Drilling narrows a group scope to one of its projects, so it has
     /// nothing to do in a repository scope - there is no level below it. The
     /// arm must therefore not claim the key there: it has to fall through to
@@ -3132,6 +3219,9 @@ mod tests {
             app.scope,
             crate::scope::Scope::Repository("group/project".to_string())
         );
-        assert_eq!(app.prev_scope, Some(crate::scope::Scope::Group("group".to_string())));
+        assert_eq!(
+            app.prev_scope,
+            Some(crate::scope::Scope::Group("group".to_string()))
+        );
     }
 }
