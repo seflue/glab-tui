@@ -2738,6 +2738,16 @@ mod tests {
         handle_active_tab_key(app, key_event, &mut terminal, tx, pending).await;
     }
 
+    /// The page-scroll actions ship no vim bindings: a full page is PageDown /
+    /// PageUp, a half page has no default at all. Every test below drives the
+    /// Ctrl+f/b/d/u spelling, so it has to bind it first.
+    fn bind_vim_page_keys(app: &mut App) {
+        app.config.keybindings.global.scroll_page_down = "Ctrl+f".to_string();
+        app.config.keybindings.global.scroll_page_up = "Ctrl+b".to_string();
+        app.config.keybindings.global.scroll_half_page_down = "Ctrl+d".to_string();
+        app.config.keybindings.global.scroll_half_page_up = "Ctrl+u".to_string();
+    }
+
     #[tokio::test]
     async fn j_and_k_scroll_the_detail_pane_by_one_line_with_default_config() {
         let mut app = App::default();
@@ -2811,6 +2821,7 @@ mod tests {
     #[tokio::test]
     async fn ctrl_f_b_d_u_scroll_by_full_and_half_viewport() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.detail_visible = true;
         app.detail_rect = Some(ratatui::layout::Rect::new(0, 0, 40, 22));
         app.detail_scroll = 5;
@@ -2849,6 +2860,7 @@ mod tests {
     #[tokio::test]
     async fn page_scroll_keys_do_nothing_without_detail_rect() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.detail_visible = true;
         app.detail_rect = None;
         app.detail_scroll = 5;
@@ -2873,6 +2885,7 @@ mod tests {
     #[tokio::test]
     async fn page_scroll_up_does_not_underflow_at_top() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.detail_visible = true;
         app.detail_rect = Some(ratatui::layout::Rect::new(0, 0, 40, 2));
         app.detail_scroll = 0;
@@ -2898,6 +2911,7 @@ mod tests {
     #[tokio::test]
     async fn ctrl_f_scrolls_even_with_pending_g_prefix() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.detail_visible = true;
         app.detail_rect = Some(ratatui::layout::Rect::new(0, 0, 40, 22));
         app.detail_scroll = 5;
@@ -2916,6 +2930,7 @@ mod tests {
     #[tokio::test]
     async fn ctrl_f_does_not_also_open_inline_search() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.detail_visible = true;
         app.detail_rect = Some(ratatui::layout::Rect::new(0, 0, 40, 22));
 
@@ -2933,6 +2948,7 @@ mod tests {
     #[tokio::test]
     async fn ctrl_d_does_not_also_cancel_pipeline() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.active_tab = crate::app::Tab::Pipelines;
         app.pipelines.items = vec![crate::domain::pipelines::Pipeline {
             id: 1,
@@ -2969,6 +2985,7 @@ mod tests {
     #[tokio::test]
     async fn ctrl_u_does_not_also_trigger_self_update() {
         let mut app = App::default();
+        bind_vim_page_keys(&mut app);
         app.detail_visible = true;
         app.detail_rect = Some(ratatui::layout::Rect::new(0, 0, 40, 22));
 
