@@ -127,7 +127,7 @@ pub fn matches_with_pending(
         if let (Some(first), Some(second)) = (chars.next(), chars.next()) {
             return pending == Some(first)
                 && event.code == KeyCode::Char(second)
-                && event.modifiers.is_empty();
+                && event.modifiers == expected_modifiers(second);
         }
     }
     false
@@ -241,6 +241,18 @@ mod tests {
 
         let event = KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE);
         assert!(super::matches_with_pending("F5", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_matches_uppercase_second_key_on_shift() {
+        let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
+        assert!(super::matches_with_pending("gG", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_does_not_match_lowercase_second_key_on_shift() {
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::SHIFT);
+        assert!(!super::matches_with_pending("gg", Some('g'), &event));
     }
 
     #[test]
