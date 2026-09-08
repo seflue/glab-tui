@@ -46,6 +46,44 @@ pub(crate) fn maybe_fetch_related_mrs(app: &mut App, _tx: &UnboundedSender<Event
     app.pending_related_mrs_since = Some(std::time::Instant::now());
 }
 
+/// Scrolls the detail pane by a full or half page for the
+/// `scroll_page_down`/`scroll_page_up`/`scroll_half_page_down`/
+/// `scroll_half_page_up` bindings, against the usable height of
+/// `detail_rect` (its height minus the two border rows). `pending` is the
+/// character captured on a previous keystroke, if any (see
+/// `matches_with_pending`); pass `None` when there is no pending sequence.
+fn apply_page_scroll(app: &mut App, pending: Option<char>, key_event: &KeyEvent) {
+    if let Some(rect) = app.detail_rect.filter(|_| app.detail_visible) {
+        let full_page = rect.height.saturating_sub(2);
+        let half_page = full_page / 2;
+        if matches_with_pending(
+            &app.config.keybindings.global.scroll_page_down,
+            pending,
+            key_event,
+        ) {
+            app.detail_scroll = app.detail_scroll.saturating_add(full_page);
+        } else if matches_with_pending(
+            &app.config.keybindings.global.scroll_page_up,
+            pending,
+            key_event,
+        ) {
+            app.detail_scroll = app.detail_scroll.saturating_sub(full_page);
+        } else if matches_with_pending(
+            &app.config.keybindings.global.scroll_half_page_down,
+            pending,
+            key_event,
+        ) {
+            app.detail_scroll = app.detail_scroll.saturating_add(half_page);
+        } else if matches_with_pending(
+            &app.config.keybindings.global.scroll_half_page_up,
+            pending,
+            key_event,
+        ) {
+            app.detail_scroll = app.detail_scroll.saturating_sub(half_page);
+        }
+    }
+}
+
 pub async fn handle_active_tab_key(
     app: &mut App,
     key_event: &KeyEvent,
@@ -66,34 +104,8 @@ pub async fn handle_active_tab_key(
             )
         {
             app.detail_scroll = 0;
-        } else if let Some(rect) = app.detail_rect.filter(|_| app.detail_visible) {
-            let full_page = rect.height.saturating_sub(2);
-            let half_page = full_page / 2;
-            if matches_with_pending(
-                &app.config.keybindings.global.scroll_page_down,
-                pending,
-                key_event,
-            ) {
-                app.detail_scroll = app.detail_scroll.saturating_add(full_page);
-            } else if matches_with_pending(
-                &app.config.keybindings.global.scroll_page_up,
-                pending,
-                key_event,
-            ) {
-                app.detail_scroll = app.detail_scroll.saturating_sub(full_page);
-            } else if matches_with_pending(
-                &app.config.keybindings.global.scroll_half_page_down,
-                pending,
-                key_event,
-            ) {
-                app.detail_scroll = app.detail_scroll.saturating_add(half_page);
-            } else if matches_with_pending(
-                &app.config.keybindings.global.scroll_half_page_up,
-                pending,
-                key_event,
-            ) {
-                app.detail_scroll = app.detail_scroll.saturating_sub(half_page);
-            }
+        } else {
+            apply_page_scroll(app, pending, key_event);
         }
         return;
     }
@@ -2222,25 +2234,8 @@ pub async fn handle_active_tab_key(
             )
         {
             app.detail_scroll = 0;
-        } else if let Some(rect) = app.detail_rect.filter(|_| app.detail_visible) {
-            let full_page = rect.height.saturating_sub(2);
-            let half_page = full_page / 2;
-            if keybinding_matches(&app.config.keybindings.global.scroll_page_down, &key_event) {
-                app.detail_scroll = app.detail_scroll.saturating_add(full_page);
-            } else if keybinding_matches(&app.config.keybindings.global.scroll_page_up, &key_event)
-            {
-                app.detail_scroll = app.detail_scroll.saturating_sub(full_page);
-            } else if keybinding_matches(
-                &app.config.keybindings.global.scroll_half_page_down,
-                &key_event,
-            ) {
-                app.detail_scroll = app.detail_scroll.saturating_add(half_page);
-            } else if keybinding_matches(
-                &app.config.keybindings.global.scroll_half_page_up,
-                &key_event,
-            ) {
-                app.detail_scroll = app.detail_scroll.saturating_sub(half_page);
-            }
+        } else {
+            apply_page_scroll(app, None, key_event);
         }
 
         match key_event.code {
