@@ -2599,7 +2599,7 @@ mod tests {
         let mut terminal = ratatui::Terminal::with_options(backend, options)
             .expect("terminal construction failed");
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        handle_active_tab_key(app, key_event, &mut terminal, tx).await;
+        handle_active_tab_key(app, key_event, &mut terminal, tx, None).await;
     }
 
     #[tokio::test]
