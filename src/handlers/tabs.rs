@@ -4,7 +4,7 @@ use crate::entity_editor::rebuild_edit_menu;
 use crate::event::Event;
 use crate::fetch::{spawn_fetch_related_mrs, spawn_refresh_active_tab};
 use crate::git_helpers::{get_default_branch, slugify};
-use crate::keybinding::keybinding_matches;
+use crate::keybinding::{keybinding_matches, matches_with_pending};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::ListState;
 use tokio::sync::mpsc::UnboundedSender;
@@ -67,7 +67,25 @@ pub async fn handle_active_tab_key(
     key_event: &KeyEvent,
     terminal: &mut AppTerminal,
     tx: UnboundedSender<Event>,
+    pending: Option<char>,
 ) {
+    if pending.is_some() {
+        // Resolving the second key of a pending sequence (e.g. the second
+        // `g` of `gg`). A key that doesn't complete a known sequence lapses
+        // instead of falling through to normal dispatch — vim discards `g`
+        // + an unbound key the same way (glt-0009 plan, Entscheidung 5).
+        if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_top,
+                pending,
+                key_event,
+            )
+        {
+            app.detail_scroll = 0;
+        }
+        return;
+    }
+
     let mut handled = true;
     match app.active_tab {
         crate::app::Tab::Issues => match key_event.code {
@@ -2016,6 +2034,14 @@ pub async fn handle_active_tab_key(
                 || key_event.code == KeyCode::Char('K'))
         {
             app.detail_scroll = app.detail_scroll.saturating_sub(1);
+        } else if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_top,
+                pending,
+                &key_event,
+            )
+        {
+            app.detail_scroll = 0;
         }
 
         match key_event.code {

@@ -88,6 +88,40 @@ pub fn keybinding_matches(binding: &str, event: &crossterm::event::KeyEvent) -> 
     }
 }
 
+/// The two-character named key tokens `keybinding_matches` matches
+/// literally (the arrow key `"Up"`, the function key `"F5"`), as opposed to
+/// two literal characters. `keybinding_char_sets` (in `src/app.rs`) uses
+/// this to avoid registering their first character as a sequence prefix.
+pub fn is_named_two_char_binding(binding: &str) -> bool {
+    matches!(binding, "Up" | "F5")
+}
+
+/// Like `keybinding_matches`, but also resolves two-character sequence
+/// bindings (e.g. `"gg"`) against a pending first keypress. `pending` is the
+/// character captured on the previous keystroke, if any.
+///
+/// Tries `keybinding_matches` first, so named two-character tokens like
+/// `"Up"` or `"F5"` keep matching their key normally instead of being
+/// misread as a two-character sequence.
+pub fn matches_with_pending(
+    binding: &str,
+    pending: Option<char>,
+    event: &crossterm::event::KeyEvent,
+) -> bool {
+    if keybinding_matches(binding, event) {
+        return true;
+    }
+    if binding.chars().count() == 2 && !binding.contains('+') {
+        let mut chars = binding.chars();
+        if let (Some(first), Some(second)) = (chars.next(), chars.next()) {
+            return pending == Some(first)
+                && event.code == KeyCode::Char(second)
+                && event.modifiers.is_empty();
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::keybinding_matches;
@@ -157,5 +191,57 @@ mod tests {
 
         let event_unmodified = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
         assert!(!keybinding_matches("Ctrl+Enter", &event_unmodified));
+    }
+
+    #[test]
+    fn two_char_binding_matches_second_key_when_pending_holds_first() {
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        assert!(super::matches_with_pending("gg", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_does_not_match_wrong_second_key() {
+        let event = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        assert!(!super::matches_with_pending("gg", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_does_not_match_without_pending() {
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        assert!(!super::matches_with_pending("gg", None, &event));
+    }
+
+    #[test]
+    fn single_char_binding_behaves_like_keybinding_matches_under_matches_with_pending() {
+        let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(
+            super::matches_with_pending("q", None, &event),
+            keybinding_matches("q", &event)
+        );
+        assert_eq!(
+            super::matches_with_pending("q", Some('g'), &event),
+            keybinding_matches("q", &event)
+        );
+    }
+
+    #[test]
+    fn named_two_char_binding_matches_its_key_regardless_of_pending() {
+        // "Up" and "F5" are two-character *named* tokens recognized by
+        // keybinding_matches, not two literal characters. They must keep
+        // matching their key even though they happen to be two chars long.
+        let event = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        assert!(super::matches_with_pending("Up", None, &event));
+
+        let event = KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE);
+        assert!(super::matches_with_pending("F5", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_sequence_binding_counts_chars_not_bytes() {
+        // "öö" is two characters but four bytes. matches_with_pending must
+        // agree with keybinding_char_sets (which counts chars) on what
+        // counts as "two characters", or the binding is dead.
+        let event = KeyEvent::new(KeyCode::Char('ö'), KeyModifiers::NONE);
+        assert!(super::matches_with_pending("öö", Some('ö'), &event));
     }
 }
