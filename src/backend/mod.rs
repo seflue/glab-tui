@@ -464,6 +464,17 @@ pub trait Backend: Send + Sync {
         pipeline_id: u64,
         page_size: usize,
     ) -> Result<Vec<Job>>;
+    /// The `trigger:` jobs of a pipeline. GitLab keeps these out of
+    /// `list_pipeline_jobs` and serves them separately; backends without a
+    /// bridge concept report none.
+    async fn list_pipeline_bridges(
+        &self,
+        _project: &str,
+        _pipeline_id: u64,
+        _page_size: usize,
+    ) -> Result<Vec<crate::domain::pipelines::Bridge>> {
+        Ok(Vec::new())
+    }
     async fn get_job_trace(&self, project: &str, job_id: u64) -> Result<String>;
 
     // ── Pipeline / Job actions ──
