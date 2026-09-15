@@ -413,6 +413,7 @@ Every table tab (Issues, MRs/PRs, Pipelines, Jobs, Runners, Releases, Todos, Mil
 | `J` | Scroll description panel down | `scroll_down` |
 | `K` | Scroll description panel up | `scroll_up` |
 | `Home` | Jump to top of description panel | `scroll_top` |
+| `End` | Jump to bottom of description panel | `scroll_bottom` |
 | `PageDown` / `PageUp` | Scroll description panel by a page | `scroll_page_down` / `scroll_page_up` |
 | unbound | Scroll description panel by half a page | `scroll_half_page_down` / `scroll_half_page_up` |
 | `f` / `/` | Open search / filter bar | `search` |
@@ -444,6 +445,8 @@ Every table tab (Issues, MRs/PRs, Pipelines, Jobs, Runners, Releases, Todos, Mil
 | `Space` | Select issue for bulk editing | `select_issue` |
 | `v` | Toggle select mode (yazi-style contiguous selection) | `selection_toggle` |
 | `M` | Jump to related Merge Requests / Pull Requests (single target jumps directly; multiple targets open a selector) | `jump_related_mrs` |
+| `G` | Drill into the selected issue's project (group scope only) | `drill_into_scope` |
+| `Esc` | Leave a drilled-into project, back to the group | — |
 | `J` | Scroll description panel down | `scroll_down` |
 | `K` | Scroll description panel up | `scroll_up` |
 
@@ -478,6 +481,8 @@ Every table tab (Issues, MRs/PRs, Pipelines, Jobs, Runners, Releases, Todos, Mil
 | `P` | View related pipelines from MR detail | `view_related_pipelines` |
 | `Space` | Select MR for bulk editing | `select_mr` |
 | `v` | Toggle select mode (yazi-style contiguous selection) | `selection_toggle` |
+| `G` | Drill into the selected MR's project (group scope only) | `drill_into_scope` |
+| `Esc` | Leave a drilled-into project, back to the group | — |
 | `o` | Open selected MR in browser | — |
 | `s` | Toggle Draft / Ready status | `toggle_draft` |
 | `c` | Close selected MR | `close_entity` |
