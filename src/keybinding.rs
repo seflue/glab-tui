@@ -2,8 +2,10 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 /// The modifiers a binding character's own KeyEvent must carry: `SHIFT` for
 /// an uppercase letter (crossterm 0.29 attaches it to every uppercase
-/// character event), none otherwise.
-fn expected_modifiers(c: char) -> KeyModifiers {
+/// character event), `NONE` for a lowercase letter. Decides casing only —
+/// a character typed with Shift but not "uppercase" per `char::is_uppercase`
+/// (e.g. `?`, `:`) is not covered by this rule.
+pub(crate) fn expected_modifiers(c: char) -> KeyModifiers {
     if c.is_uppercase() {
         KeyModifiers::SHIFT
     } else {
@@ -127,7 +129,7 @@ pub fn matches_with_pending(
         if let (Some(first), Some(second)) = (chars.next(), chars.next()) {
             return pending == Some(first)
                 && event.code == KeyCode::Char(second)
-                && event.modifiers.is_empty();
+                && event.modifiers == expected_modifiers(second);
         }
     }
     false
@@ -147,11 +149,12 @@ mod tests {
     #[test]
     fn uppercase_single_char_binding_matches_shifted_key() {
         // crossterm 0.29 attaches KeyModifiers::SHIFT to every uppercase
-        // character event. Per AGENTS.md's "Keybinding System" section,
-        // every keypress must be matched through `keybinding_matches()` so
-        // users can remap it; a binding configured as the literal uppercase
-        // letter (e.g. "A") must therefore match the KeyEvent a user
-        // actually generates by pressing Shift+A.
+        // character event. Per AGENTS.md's "Keybinding System" section
+        // ("Never add bare `KeyCode::Char('x') =>` match arms ... Always go
+        // through keybinding_matches() so users can remap"), a binding
+        // configured as the literal uppercase letter (e.g. "A") must
+        // therefore match the KeyEvent a user actually generates by
+        // pressing Shift+A.
         let event = KeyEvent::new(KeyCode::Char('A'), KeyModifiers::SHIFT);
         assert!(keybinding_matches("A", &event));
     }
@@ -241,6 +244,18 @@ mod tests {
 
         let event = KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE);
         assert!(super::matches_with_pending("F5", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_matches_uppercase_second_key_on_shift() {
+        let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
+        assert!(super::matches_with_pending("gG", Some('g'), &event));
+    }
+
+    #[test]
+    fn two_char_binding_does_not_match_lowercase_second_key_on_shift() {
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::SHIFT);
+        assert!(!super::matches_with_pending("gg", Some('g'), &event));
     }
 
     #[test]
