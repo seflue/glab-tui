@@ -734,6 +734,14 @@ pub struct KeybindingGlobal {
     pub submit_edit: String,
     #[serde(default = "def_scroll_top")]
     pub scroll_top: String,
+    #[serde(default = "def_scroll_page_down")]
+    pub scroll_page_down: String,
+    #[serde(default = "def_scroll_page_up")]
+    pub scroll_page_up: String,
+    #[serde(default = "def_scroll_half_page_down")]
+    pub scroll_half_page_down: String,
+    #[serde(default = "def_scroll_half_page_up")]
+    pub scroll_half_page_up: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1050,6 +1058,10 @@ keybind_defaults! {
     def_copy_branch = "y",
     def_copy_sha = "y",
     def_scroll_top = "Home",
+    def_scroll_page_down = "PageDown",
+    def_scroll_page_up = "PageUp",
+    def_scroll_half_page_down = "",
+    def_scroll_half_page_up = "",
 }
 
 impl Default for KeybindingGlobal {
@@ -1068,6 +1080,10 @@ impl Default for KeybindingGlobal {
             jump_to_id: def_jump_to_id(),
             submit_edit: def_submit_edit(),
             scroll_top: def_scroll_top(),
+            scroll_page_down: def_scroll_page_down(),
+            scroll_page_up: def_scroll_page_up(),
+            scroll_half_page_down: def_scroll_half_page_down(),
+            scroll_half_page_up: def_scroll_half_page_up(),
         }
     }
 }
@@ -1449,6 +1465,11 @@ scroll_down = "J"
 scroll_up = "K"
 jump_to_id = "g"
 scroll_top = "Home"
+scroll_page_down = "PageDown"
+scroll_page_up = "PageUp"
+# Half-page scrolling has no default. Vim users bind "Ctrl+d" / "Ctrl+u".
+scroll_half_page_down = ""
+scroll_half_page_up = ""
 
 [keybindings.issues]
 create_issue = "n"
@@ -2001,6 +2022,15 @@ page_size = 250
     #[test]
     fn scroll_top_defaults_to_home() {
         assert_eq!(Config::default().keybindings.global.scroll_top, "Home");
+    }
+
+    #[test]
+    fn page_scroll_defaults_to_pager_keys() {
+        let global = Config::default().keybindings.global;
+        assert_eq!(global.scroll_page_down, "PageDown");
+        assert_eq!(global.scroll_page_up, "PageUp");
+        assert_eq!(global.scroll_half_page_down, "");
+        assert_eq!(global.scroll_half_page_up, "");
     }
 
     #[test]
