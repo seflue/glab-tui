@@ -104,6 +104,14 @@ pub async fn handle_active_tab_key(
             )
         {
             app.detail_scroll = 0;
+        } else if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_bottom,
+                pending,
+                key_event,
+            )
+        {
+            app.detail_scroll_to_bottom = true;
         } else {
             apply_page_scroll(app, pending, key_event);
         }
@@ -393,14 +401,21 @@ pub async fn handle_active_tab_key(
                     }
                 }
             }
-            _ if keybinding_matches(&app.config.keybindings.issues.drill_into_scope, key_event) => {
-                if app.scope.is_group() {
-                    if let Some(idx) = app.issues.state.selected() {
-                        let filtered = app.filtered_issues();
-                        if let Some(issue) = filtered.get(idx) {
-                            if !issue.project_path.is_empty() {
-                                app.drill_into(issue.project_path.clone());
-                            }
+            // Drilling narrows a group scope to one of its projects, so the
+            // scope check belongs in the guard, not the body: in a repository
+            // scope this arm must not claim the key, or whatever else is
+            // bound to it is dead on this tab.
+            _ if app.scope.is_group()
+                && keybinding_matches(
+                    &app.config.keybindings.issues.drill_into_scope,
+                    key_event,
+                ) =>
+            {
+                if let Some(idx) = app.issues.state.selected() {
+                    let filtered = app.filtered_issues();
+                    if let Some(issue) = filtered.get(idx) {
+                        if !issue.project_path.is_empty() {
+                            app.drill_into(issue.project_path.clone());
                         }
                     }
                 }
@@ -567,14 +582,16 @@ pub async fn handle_active_tab_key(
                         }
                     }
                 }
-            } else if keybinding_matches(&app.config.keybindings.mrs.drill_into_scope, key_event) {
-                if app.scope.is_group() {
-                    if let Some(idx) = app.mrs.state.selected() {
-                        let filtered = app.filtered_mrs();
-                        if let Some(mr) = filtered.get(idx) {
-                            if !mr.project_path.is_empty() {
-                                app.drill_into(mr.project_path.clone());
-                            }
+            } else if app.scope.is_group()
+                && keybinding_matches(&app.config.keybindings.mrs.drill_into_scope, key_event)
+            {
+                // Scope check in the condition, not the body - see the
+                // Issues tab's drill arm.
+                if let Some(idx) = app.mrs.state.selected() {
+                    let filtered = app.filtered_mrs();
+                    if let Some(mr) = filtered.get(idx) {
+                        if !mr.project_path.is_empty() {
+                            app.drill_into(mr.project_path.clone());
                         }
                     }
                 }
@@ -1608,7 +1625,7 @@ pub async fn handle_active_tab_key(
                         {
                             app.job_trace_follow = !app.job_trace_follow;
                             if app.job_trace_follow {
-                                app.job_trace_needs_scroll_to_bottom = true;
+                                app.detail_scroll_to_bottom = true;
                             }
                         }
                         _ if keybinding_matches(
@@ -2245,6 +2262,17 @@ pub async fn handle_active_tab_key(
             )
         {
             app.detail_scroll = 0;
+        } else if app.detail_visible
+            && matches_with_pending(
+                &app.config.keybindings.global.scroll_bottom,
+                pending,
+                &key_event,
+            )
+        {
+            // Only the flag - the last line's index is the render pass's
+            // `max`, which no handler knows. `settle_detail_scroll` resolves
+            // it in the same frame.
+            app.detail_scroll_to_bottom = true;
         } else {
             apply_page_scroll(app, None, key_event);
         }
@@ -3265,5 +3293,138 @@ mod tests {
         )
         .await;
         assert_eq!(app.error_message, None);
+    }
+
+    /// The handler must not write `detail_scroll` itself: the last line's
+    /// index is the render pass's `max`, which no handler knows. It raises
+    /// the flag and `settle_detail_scroll` resolves it in the same frame.
+    #[tokio::test]
+    async fn scroll_bottom_raises_the_jump_flag_without_touching_the_scroll() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.detail_scroll = 5;
+        // `App::default()` goes through `Config::load()`, so the binding comes
+        // from the developer's own config unless it is set here. That the
+        // default is `End` is covered by `scroll_bottom_defaults_to_end`.
+        app.config.keybindings.global.scroll_bottom = "End".to_string();
+
+        dispatch(&mut app, &KeyEvent::new(KeyCode::End, KeyModifiers::NONE)).await;
+
+        assert!(app.detail_scroll_to_bottom);
+        assert_eq!(app.detail_scroll, 5);
+    }
+
+    #[tokio::test]
+    async fn scroll_bottom_is_ignored_while_the_detail_pane_is_hidden() {
+        let mut app = App::default();
+        app.detail_visible = false;
+
+        dispatch(&mut app, &KeyEvent::new(KeyCode::End, KeyModifiers::NONE)).await;
+
+        assert!(!app.detail_scroll_to_bottom);
+    }
+
+    /// `gg` jumps to a known index, so it writes the scroll directly. It must
+    /// not raise the jump flag on the way.
+    #[tokio::test]
+    async fn scroll_top_still_zeroes_the_scroll_without_raising_the_flag() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.detail_scroll = 5;
+
+        dispatch_with_pending(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE),
+            Some('g'),
+        )
+        .await;
+
+        assert_eq!(app.detail_scroll, 0);
+        assert!(!app.detail_scroll_to_bottom);
+    }
+
+    /// The pager binding the feature exists for: with `scroll_bottom` mapped
+    /// to `G` and `drill_into_scope` moved aside, `G` reaches the global
+    /// fallback on the Issues tab in a repository scope.
+    #[tokio::test]
+    async fn scroll_bottom_remapped_to_g_works_on_the_issues_tab() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.scope = crate::scope::Scope::Repository("group/project".to_string());
+        app.config.keybindings.global.scroll_bottom = "G".to_string();
+        app.config.keybindings.issues.drill_into_scope = "P".to_string();
+
+        dispatch(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+        )
+        .await;
+
+        assert!(app.detail_scroll_to_bottom);
+    }
+
+    /// Drilling narrows a group scope to one of its projects, so it has
+    /// nothing to do in a repository scope - there is no level below it. The
+    /// arm must therefore not claim the key there: it has to fall through to
+    /// the global bindings, or whatever the user maps onto that key is dead
+    /// on the Issues and MR tabs.
+    #[tokio::test]
+    async fn drill_key_falls_through_to_global_bindings_in_a_repository_scope() {
+        let mut app = App::default();
+        app.detail_visible = true;
+        app.scope = crate::scope::Scope::Repository("group/project".to_string());
+        app.config.keybindings.global.scroll_down =
+            app.config.keybindings.issues.drill_into_scope.clone();
+
+        dispatch(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+        )
+        .await;
+
+        assert_eq!(app.detail_scroll, 1);
+    }
+
+    /// The counterpart: in a group scope the same key still drills, and the
+    /// scope it came from stays recoverable via `prev_scope`.
+    #[tokio::test]
+    async fn drill_key_still_drills_in_a_group_scope() {
+        let mut app = App::default();
+        app.scope = crate::scope::Scope::Group("group".to_string());
+        app.issues.items = vec![crate::domain::issues::Issue {
+            iid: 1,
+            title: "Issue".to_string(),
+            state: "opened".to_string(),
+            labels: vec![],
+            updated_at: String::new(),
+            created_at: None,
+            closed_at: None,
+            author: crate::domain::issues::Author {
+                username: "user1".to_string(),
+            },
+            milestone: None,
+            assignees: vec![],
+            description: None,
+            due_date: None,
+            web_url: String::new(),
+            project_path: "group/project".to_string(),
+            related_mrs: None,
+        }];
+        app.issues.state.select(Some(0));
+
+        dispatch(
+            &mut app,
+            &KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+        )
+        .await;
+
+        assert_eq!(
+            app.scope,
+            crate::scope::Scope::Repository("group/project".to_string())
+        );
+        assert_eq!(
+            app.prev_scope,
+            Some(crate::scope::Scope::Group("group".to_string()))
+        );
     }
 }

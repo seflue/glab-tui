@@ -734,6 +734,8 @@ pub struct KeybindingGlobal {
     pub submit_edit: String,
     #[serde(default = "def_scroll_top")]
     pub scroll_top: String,
+    #[serde(default = "def_scroll_bottom")]
+    pub scroll_bottom: String,
     #[serde(default = "def_scroll_page_down")]
     pub scroll_page_down: String,
     #[serde(default = "def_scroll_page_up")]
@@ -1063,6 +1065,7 @@ keybind_defaults! {
     def_copy_branch = "y",
     def_copy_sha = "y",
     def_scroll_top = "Home",
+    def_scroll_bottom = "End",
     def_scroll_page_down = "PageDown",
     def_scroll_page_up = "PageUp",
     def_scroll_half_page_down = "",
@@ -1085,6 +1088,7 @@ impl Default for KeybindingGlobal {
             jump_to_id: def_jump_to_id(),
             submit_edit: def_submit_edit(),
             scroll_top: def_scroll_top(),
+            scroll_bottom: def_scroll_bottom(),
             scroll_page_down: def_scroll_page_down(),
             scroll_page_up: def_scroll_page_up(),
             scroll_half_page_down: def_scroll_half_page_down(),
@@ -1471,6 +1475,7 @@ scroll_down = "J"
 scroll_up = "K"
 jump_to_id = "g"
 scroll_top = "Home"
+scroll_bottom = "End"
 scroll_page_down = "PageDown"
 scroll_page_up = "PageUp"
 # Half-page scrolling has no default. Vim users bind "Ctrl+d" / "Ctrl+u".
@@ -1487,6 +1492,7 @@ reopen_entity = "r"
 delete_entity = "d"
 selection_toggle = "v"
 jump_related_mrs = "M"
+drill_into_scope = "G"
 
 [keybindings.mrs]
 create_mr = "n"
@@ -1503,6 +1509,7 @@ close_entity = "c"
 reopen_entity = "r"
 delete_entity = "d"
 selection_toggle = "v"
+drill_into_scope = "G"
 
 [keybindings.pipelines]
 trigger_pipeline = "p"
@@ -2029,6 +2036,14 @@ page_size = 250
     #[test]
     fn scroll_top_defaults_to_home() {
         assert_eq!(Config::default().keybindings.global.scroll_top, "Home");
+    }
+
+    /// `End`, not `G`: `G` is already the default for `drill_into_scope` on
+    /// the Issues and MR tabs, where a tab binding wins over a global one.
+    /// `G` stays reachable by remapping that key - see the README.
+    #[test]
+    fn scroll_bottom_defaults_to_end() {
+        assert_eq!(Config::default().keybindings.global.scroll_bottom, "End");
     }
 
     #[test]
