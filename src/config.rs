@@ -2633,6 +2633,17 @@ page_size = 250
     }
 
     #[test]
+    fn keybinding_timeout_ms_defaults_to_1000_and_is_configurable() {
+        assert_eq!(Config::default().keybinding_timeout_ms, 1000);
+
+        let custom: Config = toml::from_str("keybinding_timeout_ms = 500").expect("parse config");
+        assert_eq!(custom.keybinding_timeout_ms, 500);
+
+        let empty: Config = toml::from_str("").expect("parse empty config");
+        assert_eq!(empty.keybinding_timeout_ms, 1000);
+    }
+
+    #[test]
     fn fetch_label_colors_defaults_true_and_is_configurable() {
         assert!(Config::default().fetch_label_colors);
 
