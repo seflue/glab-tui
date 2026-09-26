@@ -661,6 +661,18 @@ async fn sync_after_scope_change(app: &mut App, old_scope: &scope::Scope, events
     }
 }
 
+/// Whether an unprefixed keypress should be captured as the first half of a
+/// pending two-character sequence. Uses the same uppercase-modifier rule as
+/// `keybinding_matches` so an uppercase sequence prefix (e.g. the "G" in
+/// "Gg") can be captured just like an uppercase single-character binding.
+fn is_sequence_prefix_key(
+    c: char,
+    modifiers: KeyModifiers,
+    prefixes: &std::collections::HashSet<char>,
+) -> bool {
+    modifiers == keybinding::expected_modifiers(c) && prefixes.contains(&c)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     use clap::Parser;
@@ -8438,7 +8450,7 @@ async fn main() -> Result<()> {
                             _ => None,
                         }
                     } else if let KeyCode::Char(c) = key_event.code {
-                        if key_event.modifiers.is_empty() && app.sequence_prefixes.contains(&c) {
+                        if is_sequence_prefix_key(c, key_event.modifiers, &app.sequence_prefixes) {
                             app.pending_key = Some(app::PendingKey {
                                 event: key_event,
                                 since: std::time::Instant::now(),
@@ -8504,5 +8516,17 @@ mod tests {
                 ("debug".to_string(), "bool(false)".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn uppercase_sequence_prefix_is_captured_on_its_shifted_keypress() {
+        let prefixes = std::collections::HashSet::from(['G']);
+        assert!(is_sequence_prefix_key('G', KeyModifiers::SHIFT, &prefixes));
+    }
+
+    #[test]
+    fn uppercase_sequence_prefix_is_not_captured_without_shift() {
+        let prefixes = std::collections::HashSet::from(['G']);
+        assert!(!is_sequence_prefix_key('G', KeyModifiers::NONE, &prefixes));
     }
 }
